@@ -30,7 +30,7 @@ pkgs.writeShellApplication {
         # shellcheck disable=SC1090
         source "$state_file"
       else
-        phase=idle
+        phase="idle"
         phase_end=0
         round=0
       fi
@@ -46,15 +46,15 @@ pkgs.writeShellApplication {
         work)
           round=$((round + 1))
           if (( round % rounds_per_cycle == 0 )); then
-            phase=long_break
+            phase="long_break"
             phase_end=$(( $(now) + long_break_secs ))
           else
-            phase=break
+            phase="break"
             phase_end=$(( $(now) + break_secs ))
           fi
           ;;
         *)
-          phase=work
+          phase="work"
           phase_end=$(( $(now) + work_secs ))
           ;;
       esac
@@ -73,7 +73,7 @@ pkgs.writeShellApplication {
       load_state
       if [[ $phase != idle && $phase != paused ]]; then
         remaining=$(( phase_end - $(now) ))
-        phase=paused
+        phase="paused"
         phase_end=$remaining
         save_state
       fi
@@ -82,7 +82,7 @@ pkgs.writeShellApplication {
 
     cmd_reset() {
       rm -f "$state_file"
-      phase=idle
+      phase="idle"
       phase_end=0
       round=0
       cmd_status
