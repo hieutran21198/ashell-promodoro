@@ -45,21 +45,29 @@ promodoro start    # start work / resume from pause; no-op if already running
 promodoro pause    # freeze remaining time
 promodoro toggle   # start if idle/paused, pause if running (designed for click-to-toggle)
 promodoro reset    # clear state, return to idle
-promodoro tick     # advance state if current phase expired, then print status
+promodoro tick     # advance state if current phase expired, then print verbose status
+promodoro short    # tick + print just MM:SS (empty when idle) — feed for minimal bar UI
 promodoro status   # print current status (default if no arg)
+promodoro detail   # multi-line summary intended for notify-send (does not advance state)
 ```
 
-Status output is one line:
+Status output formats:
 
 ```
+$ promodoro status
 work 24:59 (round 0)
-break 04:30 (round 1)
-long_break 14:00 (round 4)
-paused 12:34 (round 1)
-idle
+
+$ promodoro short
+24:59
+
+$ promodoro detail
+phase:     work
+remaining: 24:59
+round:     1 of 4
+next:      break (5 min)
 ```
 
-`tick` is the call you want from polling integrations: it advances the state machine when a phase expires, fires the right notification, then prints the current status. `status` only reads state.
+`tick` and `short` are the calls polling integrations use — they advance the state machine when a phase expires (firing the appropriate notification) and then print. `status` and `detail` only read state.
 
 ## Notifications
 
@@ -94,17 +102,19 @@ State file: `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/promodoro/state`. Survives acro
 
 ashell's `custom_modules` runs `listen_cmd` via `bash -c` and expects newline-delimited JSON with `text` and `alt` fields. Pair that with `promodoro tick` in a polling loop, and use `command` to wire left-click to `toggle`.
 
+ashell's `Config` struct serde-renames `custom_modules` to `CustomModule`, so the TOML key is `[[CustomModule]]`.
+
 `~/.config/ashell/config.toml`:
 
 ```toml
-[[custom_modules]]
+[[CustomModule]]
 name = "Promodoro"
 type = "Button"
-icon = "🍅"
+icon = ""
 command = "promodoro toggle"
 listen_cmd = """
 while :; do
-  out=$(promodoro tick)
+  out=$(promodoro short)
   printf '{"text":"%s","alt":"%s"}\\n' "$out" "$out"
   sleep 1
 done
@@ -117,15 +127,15 @@ center = ["Promodoro"]
 In Nix (e.g. inside `(pkgs.formats.toml { }).generate`):
 
 ```nix
-custom_modules = [
+CustomModule = [
   {
     name = "Promodoro";
     type = "Button";
-    icon = "🍅";
+    icon = "";
     command = "${pkgs.ashell-promodoro}/bin/promodoro toggle";
     listen_cmd = ''
       while :; do
-        out=$(${pkgs.ashell-promodoro}/bin/promodoro tick)
+        out=$(${pkgs.ashell-promodoro}/bin/promodoro short)
         printf '{"text":"%s","alt":"%s"}\n' "$out" "$out"
         sleep 1
       done
@@ -138,17 +148,13 @@ Interpolating the absolute store path keeps the loop working under systemd user 
 
 ### Right-click "show detail"
 
-ashell's `CustomModuleDef` (as of this writing) only exposes a left-click `command` — no right-click or scroll bindings. Workarounds:
+ashell's `CustomModuleDef` (as of this writing) only exposes a left-click `command` — no right-click or scroll bindings. The intended workaround is a compositor keybind that pops a `notify-send` carrying `promodoro detail`. For niri:
 
-- **Bind a keychord in your compositor.** For niri:
-
-  ```kdl
-  binds {
-    Mod+P { spawn "sh" "-c" "notify-send 'Pomodoro' \"$(promodoro status)\""; }
-  }
-  ```
-
-- **Enrich `listen_cmd` output** so the bar text always carries the detail you'd otherwise pop on right-click (e.g. include the upcoming phase and total rounds in the status line).
+```kdl
+binds {
+  Mod+Shift+P { spawn "sh" "-c" "notify-send 'Pomodoro' \"$(promodoro detail)\""; }
+}
+```
 
 ## License
 

@@ -138,8 +138,7 @@ cmd_reset() {
   cmd_status
 }
 
-cmd_tick() {
-  load_state
+advance_if_due() {
   if [[ $phase != idle && $phase != paused && $(now) -ge $phase_end ]]; then
     prev_phase="$phase"
     prev_round="$round"
@@ -147,6 +146,21 @@ cmd_tick() {
     save_state
     notify_phase_change "$prev_phase" "$prev_round"
   fi
+}
+
+remaining_secs() {
+  if [[ $phase == paused ]]; then
+    echo "$phase_end"
+  else
+    local r=$(( phase_end - $(now) ))
+    (( r < 0 )) && r=0
+    echo "$r"
+  fi
+}
+
+cmd_tick() {
+  load_state
+  advance_if_due
   cmd_status
 }
 
@@ -156,15 +170,55 @@ cmd_status() {
     echo "idle"
     return
   fi
-  if [[ $phase == paused ]]; then
-    remaining=$phase_end
-  else
-    remaining=$(( phase_end - $(now) ))
-    (( remaining < 0 )) && remaining=0
+  local r
+  r=$(remaining_secs)
+  printf '%s %02d:%02d (round %d)\n' "$phase" $(( r / 60 )) $(( r % 60 )) "$round"
+}
+
+cmd_short() {
+  load_state
+  advance_if_due
+  if [[ $phase == idle ]]; then
+    echo ""
+    return
   fi
-  mm=$(( remaining / 60 ))
-  ss=$(( remaining % 60 ))
-  printf '%s %02d:%02d (round %d)\n' "$phase" "$mm" "$ss" "$round"
+  local r
+  r=$(remaining_secs)
+  printf '%02d:%02d\n' $(( r / 60 )) $(( r % 60 ))
+}
+
+cmd_detail() {
+  load_state
+  if [[ $phase == idle ]]; then
+    printf 'phase: idle\n'
+    return
+  fi
+  local r
+  r=$(remaining_secs)
+  local next_phase next_secs
+  case "$phase" in
+    work)
+      if (( (round + 1) % rounds_per_cycle == 0 )); then
+        next_phase="long_break"
+        next_secs="$long_break_secs"
+      else
+        next_phase="break"
+        next_secs="$break_secs"
+      fi
+      ;;
+    break|long_break)
+      next_phase="work"
+      next_secs="$work_secs"
+      ;;
+    paused)
+      next_phase="${paused_phase:-work}"
+      next_secs="$r"
+      ;;
+  esac
+  printf 'phase:     %s\n' "$phase"
+  printf 'remaining: %02d:%02d\n' $(( r / 60 )) $(( r % 60 ))
+  printf 'round:     %d of %d\n' "$round" "$rounds_per_cycle"
+  printf 'next:      %s (%d min)\n' "$next_phase" $(( next_secs / 60 ))
 }
 
 cmd=${1:-status}
@@ -176,9 +230,11 @@ case "$cmd" in
   toggle) cmd_toggle ;;
   reset)  cmd_reset ;;
   tick)   cmd_tick ;;
+  short)  cmd_short ;;
   status) cmd_status ;;
+  detail) cmd_detail ;;
   *)
-    echo "usage: promodoro {start|pause|toggle|reset|tick|status}" >&2
+    echo "usage: promodoro {start|pause|toggle|reset|tick|short|status|detail}" >&2
     exit 2
     ;;
 esac
