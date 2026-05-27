@@ -10,7 +10,10 @@ pkgs.stdenv.mkDerivation {
   src = ../../bin/promodoro;
   dontUnpack = true;
 
-  nativeBuildInputs = [ pkgs.shellcheck ];
+  nativeBuildInputs = [
+    pkgs.shellcheck
+    pkgs.makeWrapper
+  ];
 
   doCheck = true;
   checkPhase = ''
@@ -23,6 +26,13 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
     install -Dm755 $src $out/bin/promodoro
     patchShebangs $out/bin/promodoro
+    wrapProgram $out/bin/promodoro \
+      --prefix PATH : ${
+        lib.makeBinPath [
+          pkgs.libnotify
+          pkgs.systemd
+        ]
+      }
     runHook postInstall
   '';
 
