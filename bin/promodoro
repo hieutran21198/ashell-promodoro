@@ -29,11 +29,16 @@ load_state() {
     phase_end=0
     round=0
   fi
+  paused_phase="${paused_phase:-}"
 }
 
 save_state() {
-  printf 'phase=%s\nphase_end=%s\nround=%s\n' \
-    "$phase" "$phase_end" "$round" > "$state_file"
+  {
+    printf 'phase=%s\nphase_end=%s\nround=%s\n' "$phase" "$phase_end" "$round"
+    if [[ -n $paused_phase ]]; then
+      printf 'paused_phase=%s\n' "$paused_phase"
+    fi
+  } > "$state_file"
 }
 
 advance() {
@@ -88,10 +93,19 @@ notify_phase_change() {
 
 cmd_start() {
   load_state
-  if [[ $phase == idle || $phase == paused ]]; then
-    advance
-    save_state
-  fi
+  case "$phase" in
+    paused)
+      remaining=$phase_end
+      phase="${paused_phase:-work}"
+      phase_end=$(( $(now) + remaining ))
+      paused_phase=""
+      save_state
+      ;;
+    idle)
+      advance
+      save_state
+      ;;
+  esac
   cmd_status
 }
 
@@ -99,6 +113,7 @@ cmd_pause() {
   load_state
   if [[ $phase != idle && $phase != paused ]]; then
     remaining=$(( phase_end - $(now) ))
+    paused_phase="$phase"
     phase="paused"
     phase_end=$remaining
     save_state
@@ -119,6 +134,7 @@ cmd_reset() {
   phase="idle"
   phase_end=0
   round=0
+  paused_phase=""
   cmd_status
 }
 
